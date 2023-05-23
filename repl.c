@@ -7,11 +7,6 @@
 #include <editline/readline.h>
 #include "mpc.h"
 
-mpc_parser_t* Number;
-mpc_parser_t* Operator;
-mpc_parser_t* Expr;
-mpc_parser_t* ItsLisp;
-
 void startup_info(void) {
   puts("its-lisp v0.1\nctrl-c to exit\n");
 }
@@ -69,7 +64,7 @@ int main(int argc, char** argv) {
     "                                                     \
       number   : /-?[0-9]+/ ;                             \
       operator : '+' | '-' | '*' | '/' ;                  \
-      exp     : <number> | '(' <operator> <expr>+ ')' ;  \
+      expr     : <number> | '(' <operator> <expr>+ ')' ;  \
       its_lisp : /^/ <operator> <expr>+ /$/ ;             \
     ",
     Number,
