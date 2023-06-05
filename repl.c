@@ -7,19 +7,25 @@
 #include <editline/readline.h>
 #include "mpc.h"
 
+#define ASSERT(val, cond, err) if (!(cond)) { val_del(val); return val_err(err); }
+
 enum {
   VAL_NUM,
   VAL_ERR,
   VAL_SYM,
-  VAL_SEXPR
+  VAL_SEXPR,
+  VAL_QEXPR
 };
 
 enum {
   ERR_DIV_ZERO,
-  ERR_BAD_OP,
+  ERR_BAD_FUNCTION,
   ERR_BAD_NUM,
   ERR_BAD_SEXPR,
   ERR_NON_NUM_ARG,
+  ERR_WRONG_NUM_ARGS,
+  ERR_WRONG_ARG_TYPE,
+  ERR_EMPTY_ARGS,
   ERR_UNKNOWN
 };
 
@@ -56,8 +62,8 @@ Val* val_err(int e) {
     case ERR_DIV_ZERO:
       msg = "division by zero";
       break;
-    case ERR_BAD_OP:
-      msg = "unknown operator";
+    case ERR_BAD_FUNCTION:
+      msg = "unknown function";
       break;
     case ERR_BAD_NUM:
       msg = "unable to parse number";
@@ -67,6 +73,15 @@ Val* val_err(int e) {
       break;
     case ERR_NON_NUM_ARG:
       msg = "cannot operate on non-number";
+      break;
+    case ERR_WRONG_NUM_ARGS:
+      msg = "wrong number of args provided";
+      break;
+    case ERR_WRONG_ARG_TYPE:
+      msg = "wrong type in args";
+      break;
+    case ERR_EMPTY_ARGS:
+      msg = "args required, received zero";
       break;
     default:
       msg = "unknown error";
@@ -92,6 +107,14 @@ Val* val_sexpr(void) {
   return v;
 }
 
+Val* val_qexpr(void) {
+  Val* v = malloc(sizeof(Val));
+  v->type = VAL_QEXPR;
+  v->count = 0;
+  v->cell = NULL;
+  return v;
+}
+
 /*
  * Val operators
  */
@@ -102,6 +125,7 @@ void val_del(Val* v) {
     case VAL_ERR: free(v->err); break;
     case VAL_SYM: free(v->sym); break;
     case VAL_SEXPR:
+    case VAL_QEXPR:
       for (int i=0; i < v->count; i++) {
         val_del(v->cell[i]);
       }
@@ -133,9 +157,62 @@ Val* val_take(Val* v, int i) {
   return c;
 }
 
+Val* val_join(Val* a, Val* b) {
+  while (b->count) {
+    a = val_append(a, val_pop(b, 0));
+  }
+  val_del(b);
+  return a;
+}
+
 /*
  * Val evaluators
  */
+
+Val* builtin_head(Val* args) {
+  ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
+  ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
+  ASSERT(args, args->cell[0]->count != 0, ERR_EMPTY_ARGS);
+  Val* v = val_take(args, 0);
+  while (v->count > 1) {
+    val_del(val_pop(v, 1));
+  }
+  return v;
+}
+
+Val* builtin_tail(Val* args) {
+  ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
+  ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
+  ASSERT(args, args->cell[0]->count != 0, ERR_EMPTY_ARGS);
+  Val* v = val_take(args, 0);
+  val_del(val_pop(v, 0));
+  return v;
+}
+
+Val* builtin_list(Val* args) {
+  args->type = VAL_QEXPR;
+  return args;
+}
+
+Val* builtin_eval(Val* args) {
+  ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
+  ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
+  Val* v = val_take(args, 0);
+  v->type = VAL_SEXPR;
+  return val_eval(v);
+}
+
+Val* builtin_join(Val* args) {
+  for (int i = 0; i < args->count; i++) {
+    ASSERT(args, args->cell[i]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
+  }
+  Val* v = val_pop(args, 0);
+  while (args->count) {
+    v = val_join(v, val_pop(args, 0));
+  }
+  val_del(args);
+  return v;
+}
 
 Val* builtin_op(Val* v, char* op) {
   for (int i=0; i < v->count; i++) {
@@ -148,23 +225,29 @@ Val* builtin_op(Val* v, char* op) {
   Val* a = val_pop(v, 0);
 
   if ((strcmp(op, "-") == 0) && v->count == 0) {
-    a->num = -a->num;
+    a->num *= -1;
   }
 
   while (v->count > 0) {
     Val* b = val_pop(v, 0);
 
+    if (strstr("/%", op) && b->num == 0) {
+      val_del(a);
+      val_del(b);
+      a = val_err(ERR_DIV_ZERO);
+      break;
+    }
+
     if (strcmp(op, "+") == 0) { a->num += b->num; }
     if (strcmp(op, "-") == 0) { a->num -= b->num; }
     if (strcmp(op, "*") == 0) { a->num *= b->num; }
-    if (strcmp(op, "/") == 0) {
-      if (b->num == 0) {
-        val_del(a);
-        val_del(b);
-        a = val_err(ERR_DIV_ZERO);
-        break;
-      }
-      a->num /= b->num;
+    if (strcmp(op, "/") == 0) { a->num /= b->num; }
+    if (strcmp(op, "%") == 0) { a->num %= b->num; }
+    if (strcmp(op, "min") == 0 && b->num < a->num) {
+      a->num = b->num;
+    }
+    if (strcmp(op, "max") == 0 && b->num > a->num) {
+      a->num = b->num;
     }
 
     val_del(b);
@@ -172,6 +255,17 @@ Val* builtin_op(Val* v, char* op) {
 
   val_del(v);
   return a;
+}
+
+Val* builtin(Val* v, char* func) {
+  if (strcmp(func, "head") == 0) { return builtin_head(v); }
+  if (strcmp(func, "tail") == 0) { return builtin_tail(v); }
+  if (strcmp(func, "list") == 0) { return builtin_list(v); }
+  if (strcmp(func, "eval") == 0) { return builtin_eval(v); }
+  if (strcmp(func, "join") == 0) { return builtin_join(v); }
+  if (strstr("+-*/%minmax", func)) { return builtin_op(v, func); }
+  val_del(v);
+  return val_err(ERR_BAD_FUNCTION);
 }
 
 Val* val_eval_sexpr(Val* v) {
@@ -194,7 +288,7 @@ Val* val_eval_sexpr(Val* v) {
     return val_err(ERR_BAD_SEXPR);
   }
 
-  Val* r = builtin_op(v, vs->sym);
+  Val* r = builtin(v, vs->sym);
   val_del(vs);
 
   return r;
@@ -215,6 +309,16 @@ Val* val_read_num(mpc_ast_t* t) {
   return errno == ERANGE ? val_err(ERR_BAD_NUM) : val_num(n);
 }
 
+int skip_append(mpc_ast_t* t) {
+  return (
+    strcmp(t->contents, "(") == 0 ||
+    strcmp(t->contents, ")") == 0 ||
+    strcmp(t->contents, "{") == 0 ||
+    strcmp(t->contents, "}") == 0 ||
+    strcmp(t->tag, "regex") == 0
+  );
+}
+
 Val* val_read(mpc_ast_t* t) {
   if (strstr(t->tag, "number")) { return val_read_num(t); }
   if (strstr(t->tag, "symbol")) { return val_sym(t->contents); }
@@ -222,11 +326,10 @@ Val* val_read(mpc_ast_t* t) {
   Val* root = NULL;
   if (strcmp(t->tag, ">") == 0) { root = val_sexpr(); }
   if (strstr(t->tag, "sexpr")) { root = val_sexpr(); }
+  if (strstr(t->tag, "qexpr")) { root = val_qexpr(); }
 
   for (int i=0; i < t->children_num; i++) {
-    if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
-    if (strcmp(t->children[i]->contents, ")") == 0) { continue; }
-    if (strcmp(t->children[i]->tag, "regex") == 0) { continue; }
+    if (skip_append(t->children[i])) { continue; }
     root = val_append(root, val_read(t->children[i]));
   }
   return root;
@@ -257,6 +360,9 @@ void val_print(Val* v) {
       break;
     case VAL_SEXPR:
       val_expr_print(v, '(', ')');
+      break;
+    case VAL_QEXPR:
+      val_expr_print(v, '{', '}');
       break;
     case VAL_ERR:
       printf("**error** %s", v->err);
@@ -300,21 +406,27 @@ int main(int argc, char** argv) {
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
   mpc_parser_t* SExpr = mpc_new("sexpr");
+  mpc_parser_t* QExpr = mpc_new("qexpr");
   mpc_parser_t* Expr = mpc_new("expr");
   mpc_parser_t* ItsLisp = mpc_new("its_lisp");
 
   mpca_lang(
     MPCA_LANG_DEFAULT,
-    "                                               \
-      number    : /-?[0-9]+/ ;                      \
-      symbol    : '+' | '-' | '*' | '/' ;           \
-      sexpr     : '(' <expr>* ')' ;                 \
-      expr      : <number> | <symbol> | <sexpr> ;   \
-      its_lisp  : /^/ <expr>* /$/ ;                 \
+    "                                                         \
+      number    : /-?[0-9]+/ ;                                \
+      symbol    : '+' | '-' | '*' | '/' | '%'                 \
+                | \"min\" | \"max\" | \"list\" | \"head\"     \
+                | \"tail\" | \"join\" | \"eval\" | \"cons\"   \
+                | \"len\" ;                                   \
+      sexpr     : '(' <expr>* ')' ;                           \
+      qexpr     : '{' <expr>* '}' ;                           \
+      expr      : <number> | <symbol> | <sexpr> | <qexpr> ;   \
+      its_lisp  : /^/ <expr>* /$/ ;                           \
     ",
     Number,
     Symbol,
     SExpr,
+    QExpr,
     Expr,
     ItsLisp
   );
@@ -328,7 +440,14 @@ int main(int argc, char** argv) {
     process_input(input, ItsLisp);
   }
 
-  mpc_cleanup(5, Number, Symbol, SExpr, Expr, ItsLisp);
+  mpc_cleanup(6,
+    Number,
+    Symbol,
+    SExpr,
+    QExpr,
+    Expr,
+    ItsLisp
+  );
   return 0;
 }
 
