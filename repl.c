@@ -32,6 +32,11 @@ typedef struct Val {
   struct Val** cell;
 } Val;
 
+Val* val_read(mpc_ast_t* t);
+Val* val_eval(Val* v);
+void val_print(Val* v);
+void val_println(Val* v);
+
 /*
  * Val builders
  */
@@ -169,8 +174,6 @@ Val* builtin_op(Val* v, char* op) {
   return a;
 }
 
-Val* val_eval(Val* v);
-
 Val* val_eval_sexpr(Val* v) {
   if (v->count == 0) { return v; }
 
@@ -218,7 +221,7 @@ Val* val_read(mpc_ast_t* t) {
 
   Val* root = NULL;
   if (strcmp(t->tag, ">") == 0) { root = val_sexpr(); }
-  if (strstr(t->tag, "s_expr") == 0) { root = val_sexpr(); }
+  if (strstr(t->tag, "sexpr")) { root = val_sexpr(); }
 
   for (int i=0; i < t->children_num; i++) {
     if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
@@ -232,8 +235,6 @@ Val* val_read(mpc_ast_t* t) {
 /*
  * Val printers
  */
-
-void val_print(Val* v);
 
 void val_expr_print(Val* v, char open, char close) {
   putchar(open);
@@ -285,6 +286,7 @@ int should_exit(char* input) {
 void process_input(char* input, mpc_parser_t* lisp) {
   mpc_result_t r;
   if (mpc_parse("<stdin>", input, lisp, &r)) {
+    // mpc_ast_print(r.output);
     Val* v = val_eval(val_read(r.output));
     val_println(v);
     val_del(v);
