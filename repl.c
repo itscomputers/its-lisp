@@ -43,41 +43,42 @@ struct Val {
   int type;
 
   long num;
-  char* sym;
-  char* err;
+  char *sym;
+  char *err;
   BuiltIn fun;
 
   int count;
-  Val** cell;
+  Val **cell;
 };
 
 struct Env {
   int count;
-  char** syms;
-  Val** vals;
+  char **syms;
+  Val **vals;
 };
 
-Val* val_read(mpc_ast_t* t);
-Val* val_eval(Env* e, Val* v);
-void val_print(Val* v);
-void val_println(Val* v);
-Val* env_get(Env* e, Val* k);
+Val *val_read(mpc_ast_t *t);
+Val *val_eval(Env *e, Val *v);
+void val_print(Val *v);
+void val_println(Val *v);
+Val *env_get(Env *e, Val *k);
+void env_put(Env *e, Val *k, Val *v);
 
 /*
  * Val builders
  */
 
-Val* val_num(long n) {
-  Val* v = malloc(sizeof(Val));
+Val *val_num(long n) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_NUM;
   v->num = n;
   return v;
 }
 
-Val* val_err(int e) {
-  Val* v = malloc(sizeof(Val));
+Val *val_err(int e) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_ERR;
-  char* msg;
+  char *msg;
   switch (e) {
     case ERR_DIV_ZERO:
       msg = "division by zero";
@@ -114,31 +115,31 @@ Val* val_err(int e) {
   return v;
 }
 
-Val* val_sym(char* s) {
-  Val* v = malloc(sizeof(Val));
+Val *val_sym(char *s) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_SYM;
   v->sym = malloc(strlen(s) + 1);
   strcpy(v->sym, s);
   return v;
 }
 
-Val* val_fun(BuiltIn func) {
-  Val* v = malloc(sizeof(Val));
+Val *val_fun(BuiltIn func) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_FUN;
   v->fun = func;
   return v;
 }
 
-Val* val_sexpr(void) {
-  Val* v = malloc(sizeof(Val));
+Val *val_sexpr(void) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_SEXPR;
   v->count = 0;
   v->cell = NULL;
   return v;
 }
 
-Val* val_qexpr(void) {
-  Val* v = malloc(sizeof(Val));
+Val *val_qexpr(void) {
+  Val *v = malloc(sizeof(Val));
   v->type = VAL_QEXPR;
   v->count = 0;
   v->cell = NULL;
@@ -149,7 +150,7 @@ Val* val_qexpr(void) {
  * Val operators
  */
 
-void val_del(Val* v) {
+void val_del(Val *v) {
   switch (v->type) {
     case VAL_NUM:
     case VAL_FUN:
@@ -168,8 +169,8 @@ void val_del(Val* v) {
   free(v);
 }
 
-Val* val_copy(Val* v) {
-  Val* c = malloc(sizeof(Val));
+Val *val_copy(Val *v) {
+  Val *c = malloc(sizeof(Val));
   c->type = v->type;
 
   switch (v->type) {
@@ -196,28 +197,28 @@ Val* val_copy(Val* v) {
   return c;
 }
 
-Val* val_append(Val* v, Val* c) {
+Val *val_append(Val *v, Val *c) {
   v->count++;
   v->cell = realloc(v->cell, sizeof(Val*) * v->count);
   v->cell[v->count - 1] = c;
   return v;
 }
 
-Val* val_pop(Val* v, int i) {
-  Val* c = v->cell[i];
+Val *val_pop(Val *v, int i) {
+  Val *c = v->cell[i];
   memmove(&v->cell[i], &v->cell[i+1], sizeof(Val*) * v->count - i - 1);
   v->count--;
   v->cell = realloc(v->cell, sizeof(Val*) * v->count);
   return c;
 }
 
-Val* val_take(Val* v, int i) {
-  Val* c = val_pop(v, i);
+Val *val_take(Val *v, int i) {
+  Val *c = val_pop(v, i);
   val_del(v);
   return c;
 }
 
-Val* val_join(Val* a, Val* b) {
+Val *val_join(Val *a, Val *b) {
   while (b->count) {
     a = val_append(a, val_pop(b, 0));
   }
@@ -229,44 +230,44 @@ Val* val_join(Val* a, Val* b) {
  * Val evaluators
  */
 
-Val* builtin_head(Env* e, Val* args) {
+Val *builtin_head(Env *e, Val *args) {
   ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
   ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
   ASSERT(args, args->cell[0]->count != 0, ERR_EMPTY_ARGS);
-  Val* v = val_take(args, 0);
+  Val *v = val_take(args, 0);
   while (v->count > 1) {
     val_del(val_pop(v, 1));
   }
   return v;
 }
 
-Val* builtin_tail(Env* e, Val* args) {
+Val *builtin_tail(Env *e, Val *args) {
   ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
   ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
   ASSERT(args, args->cell[0]->count != 0, ERR_EMPTY_ARGS);
-  Val* v = val_take(args, 0);
+  Val *v = val_take(args, 0);
   val_del(val_pop(v, 0));
   return v;
 }
 
-Val* builtin_list(Env* e, Val* args) {
+Val *builtin_list(Env *e, Val *args) {
   args->type = VAL_QEXPR;
   return args;
 }
 
-Val* builtin_eval(Env* e, Val* args) {
+Val *builtin_eval(Env *e, Val *args) {
   ASSERT(args, args->count == 1, ERR_WRONG_NUM_ARGS);
   ASSERT(args, args->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
-  Val* v = val_take(args, 0);
+  Val *v = val_take(args, 0);
   v->type = VAL_SEXPR;
   return val_eval(e, v);
 }
 
-Val* builtin_join(Env* e, Val* args) {
+Val *builtin_join(Env *e, Val *args) {
   for (int i = 0; i < args->count; i++) {
     ASSERT(args, args->cell[i]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
   }
-  Val* v = val_pop(args, 0);
+  Val *v = val_pop(args, 0);
   while (args->count) {
     v = val_join(v, val_pop(args, 0));
   }
@@ -274,37 +275,37 @@ Val* builtin_join(Env* e, Val* args) {
   return v;
 }
 
-Val* builtin_op(Env* e, Val* v, char* op);
+Val *builtin_op(Env *e, Val *v, char *op);
 
-Val* builtin_add(Env* e, Val* v) {
+Val *builtin_add(Env *e, Val *v) {
   return builtin_op(e, v, "+");
 }
 
-Val* builtin_sub(Env* e, Val* v) {
+Val *builtin_sub(Env *e, Val *v) {
   return builtin_op(e, v, "-");
 }
 
-Val* builtin_mul(Env* e, Val* v) {
+Val *builtin_mul(Env *e, Val *v) {
   return builtin_op(e, v, "*");
 }
 
-Val* builtin_div(Env* e, Val* v) {
+Val *builtin_div(Env *e, Val *v) {
   return builtin_op(e, v, "/");
 }
 
-Val* builtin_mod(Env* e, Val* v) {
+Val *builtin_mod(Env *e, Val *v) {
   return builtin_op(e, v, "%");
 }
 
-Val* builtin_min(Env* e, Val* v) {
+Val *builtin_min(Env *e, Val *v) {
   return builtin_op(e, v, "min");
 }
 
-Val* builtin_max(Env* e, Val* v) {
+Val *builtin_max(Env *e, Val *v) {
   return builtin_op(e, v, "max");
 }
 
-Val* builtin_op(Env* e, Val* v, char* op) {
+Val *builtin_op(Env *e, Val *v, char *op) {
   for (int i=0; i < v->count; i++) {
     if (v->cell[i]->type != VAL_NUM) {
       val_del(v);
@@ -312,14 +313,14 @@ Val* builtin_op(Env* e, Val* v, char* op) {
     }
   }
 
-  Val* a = val_pop(v, 0);
+  Val *a = val_pop(v, 0);
 
   if ((strcmp(op, "-") == 0) && v->count == 0) {
     a->num *= -1;
   }
 
   while (v->count > 0) {
-    Val* b = val_pop(v, 0);
+    Val *b = val_pop(v, 0);
 
     if (strstr("/%", op) && b->num == 0) {
       val_del(a);
@@ -347,7 +348,23 @@ Val* builtin_op(Env* e, Val* v, char* op) {
   return a;
 }
 
-Val* val_eval_sexpr(Env* e, Val* v) {
+Val *builtin_def(Env *e, Val *v) {
+  ASSERT(v, v->cell[0]->type == VAL_QEXPR, ERR_WRONG_ARG_TYPE);
+  Val *syms = v->cell[0];
+  for (int i = 0; i < syms->count; i++) {
+    ASSERT(v, syms->cell[i]->type == VAL_SYM, ERR_WRONG_ARG_TYPE);
+  }
+  ASSERT(v, syms->count == v->count - 1, ERR_WRONG_NUM_ARGS);
+
+  for (int i = 0; i < syms->count; i++) {
+    env_put(e, syms->cell[i], v->cell[i + 1]);
+  }
+
+  val_del(v);
+  return val_sexpr();
+}
+
+Val *val_eval_sexpr(Env *e, Val *v) {
   if (v->count == 0) { return v; }
 
   for (int i=0; i < v->count; i++) {
@@ -360,23 +377,22 @@ Val* val_eval_sexpr(Env* e, Val* v) {
     if (v->cell[i]->type == VAL_ERR) { return val_take(v, i); }
   }
 
-  Val* f = val_pop(v, 0);
+  Val *f = val_pop(v, 0);
   if (f->type != VAL_FUN) {
     val_del(f);
     val_del(v);
     return val_err(ERR_BAD_FUNCTION);
   }
 
-  Val* r = f->fun(e, v);
+  Val *r = f->fun(e, v);
   val_del(f);
 
   return r;
 }
 
-Val* val_eval(Env* e, Val* v) {
-  // todo: refactor to use switch
+Val *val_eval(Env *e, Val *v) {
   if (v->type == VAL_SYM) {
-    Val* x = env_get(e, v);
+    Val *x = env_get(e, v);
     val_del(v);
     return x;
   }
@@ -388,13 +404,13 @@ Val* val_eval(Env* e, Val* v) {
  * Val readers
  */
 
-Val* val_read_num(mpc_ast_t* t) {
+Val *val_read_num(mpc_ast_t *t) {
   errno = 0;
   long n = strtol(t->contents, NULL, 10);
   return errno == ERANGE ? val_err(ERR_BAD_NUM) : val_num(n);
 }
 
-int skip_append(mpc_ast_t* t) {
+int skip_append(mpc_ast_t *t) {
   return (
     strcmp(t->contents, "(") == 0 ||
     strcmp(t->contents, ")") == 0 ||
@@ -404,11 +420,11 @@ int skip_append(mpc_ast_t* t) {
   );
 }
 
-Val* val_read(mpc_ast_t* t) {
+Val *val_read(mpc_ast_t *t) {
   if (strstr(t->tag, "number")) { return val_read_num(t); }
   if (strstr(t->tag, "symbol")) { return val_sym(t->contents); }
 
-  Val* root = NULL;
+  Val *root = NULL;
   if (strcmp(t->tag, ">") == 0) { root = val_sexpr(); }
   if (strstr(t->tag, "sexpr")) { root = val_sexpr(); }
   if (strstr(t->tag, "qexpr")) { root = val_qexpr(); }
@@ -424,7 +440,7 @@ Val* val_read(mpc_ast_t* t) {
  * Val printers
  */
 
-void val_expr_print(Val* v, char open, char close) {
+void val_expr_print(Val *v, char open, char close) {
   putchar(open);
   for (int i=0; i < v->count; i++) {
     val_print(v->cell[i]);
@@ -435,7 +451,7 @@ void val_expr_print(Val* v, char open, char close) {
   putchar(close);
 }
 
-void val_print(Val* v) {
+void val_print(Val *v) {
   switch (v->type) {
     case VAL_NUM:
       printf("%li", v->num);
@@ -458,7 +474,7 @@ void val_print(Val* v) {
   }
 }
 
-void val_println(Val* v) {
+void val_println(Val *v) {
   val_print(v);
   putchar('\n');
 }
@@ -467,15 +483,15 @@ void val_println(Val* v) {
  * Env operators
  */
 
-Env* env_new(void) {
-  Env* e = malloc(sizeof(Env));
+Env *env_new(void) {
+  Env *e = malloc(sizeof(Env));
   e->count = 0;
   e->syms = NULL;
   e->vals = NULL;
   return e;
 }
 
-void env_del(Env* e) {
+void env_del(Env *e) {
   for (int i = 0; i < e->count; i++) {
     free(e->syms[i]);
     val_del(e->vals[i]);
@@ -485,7 +501,7 @@ void env_del(Env* e) {
   free(e);
 }
 
-Val* env_get(Env* e, Val* k) {
+Val *env_get(Env *e, Val *k) {
   for (int i = 0; i < e->count; i++) {
     if (strcmp(e->syms[i], k->sym) == 0) {
       return val_copy(e->vals[i]);
@@ -494,7 +510,7 @@ Val* env_get(Env* e, Val* k) {
   return val_err(ERR_BAD_SYM);
 }
 
-void env_put(Env* e, Val* k, Val* v) {
+void env_put(Env *e, Val *k, Val *v) {
   for (int i = 0; i < e->count; i++) {
     if (strcmp(e->syms[i], k->sym) == 0) {
       val_del(e->vals[i]);
@@ -512,15 +528,15 @@ void env_put(Env* e, Val* k, Val* v) {
   strcpy(e->syms[e->count - 1], k->sym);
 }
 
-void env_add_builtin(Env* e, char* name, BuiltIn func) {
-  Val* k = val_sym(name);
-  Val* v = val_fun(func);
+void env_add_builtin(Env *e, char *name, BuiltIn func) {
+  Val *k = val_sym(name);
+  Val *v = val_fun(func);
   env_put(e, k, v);
   val_del(k);
   val_del(v);
 }
 
-void env_add_builtins(Env* e) {
+void env_add_builtins(Env *e) {
   env_add_builtin(e, "+", builtin_add);
   env_add_builtin(e, "-", builtin_sub);
   env_add_builtin(e, "*", builtin_mul);
@@ -534,10 +550,12 @@ void env_add_builtins(Env* e) {
   env_add_builtin(e, "tail", builtin_tail);
   env_add_builtin(e, "eval", builtin_eval);
   env_add_builtin(e, "join", builtin_join);
+
+  env_add_builtin(e, "def", builtin_def);
 }
 
-Env* env_init(void) {
-  Env* e = env_new();
+Env *env_init(void) {
+  Env *e = env_new();
   env_add_builtins(e);
   return e;
 }
@@ -550,17 +568,17 @@ void startup_info(void) {
   puts("its-lisp v0.1\nctrl-c to exit\n");
 }
 
-int should_exit(char* input) {
+int should_exit(char *input) {
   int exit = strncmp(input, "exit", 4);
   int quit = strncmp(input, "quit", 4);
   return exit == 0 || quit == 0;
 }
 
-void process_input(Env* e, char* input, mpc_parser_t* lisp) {
+void process_input(Env *e, char *input, mpc_parser_t *lisp) {
   mpc_result_t r;
   if (mpc_parse("<stdin>", input, lisp, &r)) {
     // mpc_ast_print(r.output);
-    Val* v = val_eval(e, val_read(r.output));
+    Val *v = val_eval(e, val_read(r.output));
     val_println(v);
     val_del(v);
   } else {
@@ -569,13 +587,13 @@ void process_input(Env* e, char* input, mpc_parser_t* lisp) {
   }
 }
 
-int main(int argc, char** argv) {
-  mpc_parser_t* Number = mpc_new("number");
-  mpc_parser_t* Symbol = mpc_new("symbol");
-  mpc_parser_t* SExpr = mpc_new("sexpr");
-  mpc_parser_t* QExpr = mpc_new("qexpr");
-  mpc_parser_t* Expr = mpc_new("expr");
-  mpc_parser_t* ItsLisp = mpc_new("its_lisp");
+int main(int argc, char **argv) {
+  mpc_parser_t *Number = mpc_new("number");
+  mpc_parser_t *Symbol = mpc_new("symbol");
+  mpc_parser_t *SExpr = mpc_new("sexpr");
+  mpc_parser_t *QExpr = mpc_new("qexpr");
+  mpc_parser_t *Expr = mpc_new("expr");
+  mpc_parser_t *ItsLisp = mpc_new("its_lisp");
 
   mpca_lang(
     MPCA_LANG_DEFAULT,
@@ -597,10 +615,10 @@ int main(int argc, char** argv) {
 
   startup_info();
 
-  Env* env = env_init();
+  Env *env = env_init();
 
   while (1) {
-    char* input = readline("its> ");
+    char *input = readline("its> ");
     if (should_exit(input)) break;
     add_history(input);
     process_input(env, input, ItsLisp);
