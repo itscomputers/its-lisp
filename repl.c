@@ -10,13 +10,19 @@
 #define ASSERT(val, cond, err) \
   if (!(cond)) { \
     val_del(val); \
-    return val_err(err); \
+    return err; \
   }
 #define ASSERT_CELL_ARG_TYPE(val, index, expected) \
   if (val->cell[index]->type != expected) { \
     int type = val->cell[index]->type; \
     val_del(val); \
     return val_err_arg_type(index, expected, type); \
+  }
+#define ASSERT_SUBCELL_ARG_TYPE(val, parent_index, child_index, expected) \
+  if (val->cell[parent_index]->cell[child_index]->type != expected) { \
+    int type = val->cell[parent_index]->cell[child_index]->type; \
+    val_del(val); \
+    return val_err_arg_type(child_index, expected, type); \
   }
 #define ASSERT_ARG_COUNT(val, expected, given) \
   if (expected != given) { \
@@ -50,13 +56,18 @@ struct Val {
   long num;
   char *sym;
   Err *err;
-  BuiltIn fun;
+
+  BuiltIn func;
+  Env *env;
+  Val *args;
+  Val *body;
 
   int count;
   Val **cell;
 };
 
 struct Env {
+  Env *parent;
   int count;
   char **syms;
   Val **vals;
@@ -72,7 +83,7 @@ enum {
   VAL_NUM,
   VAL_ERR,
   VAL_SYM,
-  VAL_FUN,
+  VAL_FUNC,
   VAL_SEXPR,
   VAL_QEXPR
 };
@@ -82,7 +93,7 @@ char *type_name(int t) {
     case VAL_NUM: return "number";
     case VAL_ERR: return "error";
     case VAL_SYM: return "symbol";
-    case VAL_FUN: return "function";
+    case VAL_FUNC: return "function";
     case VAL_SEXPR: return "s-expression";
     case VAL_QEXPR: return "q-expression";
   }
@@ -119,10 +130,16 @@ Err *err_copy(Err *e) {
 }
 
 Val *val_read(mpc_ast_t *t);
+Val *val_call(Env *e, Val *f, Val *v);
 Val *val_eval(Env *e, Val *v);
 void val_print(Val *v);
 void val_println(Val *v);
+
+Env *env_new(void);
+Env *env_copy(Env *e);
+void env_del(Env *e);
 Val *env_get(Env *e, Val *k);
+void env_def(Env *e, Val *k, Val *v);
 void env_put(Env *e, Val *k, Val *v);
 
 /*
@@ -171,10 +188,20 @@ Val *val_sym(char *s) {
   return v;
 }
 
-Val *val_fun(BuiltIn func) {
+Val *val_func(BuiltIn func) {
   Val *v = malloc(sizeof(Val));
-  v->type = VAL_FUN;
-  v->fun = func;
+  v->type = VAL_FUNC;
+  v->func = func;
+  return v;
+}
+
+Val *val_lambda(Val *args, Val *body) {
+  Val *v = malloc(sizeof(Val));
+  v->type = VAL_FUNC;
+  v->func = NULL;
+  v->env = env_new();
+  v->args = args;
+  v->body = body;
   return v;
 }
 
@@ -200,8 +227,13 @@ Val *val_qexpr(void) {
 
 void val_del(Val *v) {
   switch (v->type) {
-    case VAL_NUM:
-    case VAL_FUN:
+    case VAL_NUM: break;
+    case VAL_FUNC:
+      if (!v->func) {
+        env_del(v->env);
+        val_del(v->args);
+        val_del(v->body);
+      }
       break;
     case VAL_ERR: free(v->err); break;
     case VAL_SYM: free(v->sym); break;
@@ -223,7 +255,16 @@ Val *val_copy(Val *v) {
 
   switch (v->type) {
     case VAL_NUM: c->num = v->num; break;
-    case VAL_FUN: c->fun = v->fun; break;
+    case VAL_FUNC:
+      if (v->func) {
+        c->func = v->func;
+      } else {
+        c->func = NULL;
+        c->env = env_copy(v->env);
+        c->args = val_copy(v->args);
+        c->body = val_copy(v->body);
+      }
+      break;
     case VAL_ERR:
       c->err = err_copy(v->err);
       break;
@@ -322,6 +363,53 @@ Val *builtin_join(Env *e, Val *args) {
   return v;
 }
 
+Val *builtin_var(Env *e, Val *v, char *func) {
+  ASSERT_CELL_ARG_TYPE(v, 0, VAL_QEXPR);
+  Val *syms = v->cell[0];
+  for (int i = 0; i < syms->count; i++) {
+    ASSERT(
+      v,
+      syms->cell[i]->type == VAL_SYM,
+      val_err_arg_type(i, VAL_SYM, syms->cell[i]->type)
+    );
+  }
+  ASSERT_ARG_COUNT(v, syms->count, v->count - 1);
+
+  for (int i = 0; i < syms->count; i++) {
+    if (strcmp(func, "def")) {
+      env_def(e, syms->cell[i], v->cell[i + 1]);
+    } else {
+      env_put(e, syms->cell[i], v->cell[i + 1]);
+    }
+  }
+
+  val_del(v);
+  return val_sexpr();
+}
+
+Val *builtin_def(Env *e, Val *v) {
+  return builtin_var(e, v, "def");
+}
+
+Val *builtin_assign(Env *e, Val *v) {
+  return builtin_var(e, v, ":=");
+}
+
+Val *builtin_lambda(Env *e, Val *v) {
+  ASSERT_ARG_COUNT(v, 2, v->count);
+  ASSERT_CELL_ARG_TYPE(v, 0, VAL_QEXPR);
+  ASSERT_CELL_ARG_TYPE(v, 1, VAL_QEXPR);
+  for (int i = 0; i < v->cell[0]->count; i++) {
+    ASSERT_SUBCELL_ARG_TYPE(v, 0, i, VAL_SYM);
+  }
+
+  Val *args = val_pop(v, 0);
+  Val *body = val_pop(v, 0);
+  val_del(v);
+
+  return val_lambda(args, body);
+}
+
 Val *builtin_op(Env *e, Val *v, char *op);
 
 Val *builtin_add(Env *e, Val *v) {
@@ -392,22 +480,6 @@ Val *builtin_op(Env *e, Val *v, char *op) {
   return a;
 }
 
-Val *builtin_def(Env *e, Val *v) {
-  ASSERT_CELL_ARG_TYPE(v, 0, VAL_QEXPR);
-  Val *syms = v->cell[0];
-  for (int i = 0; i < syms->count; i++) {
-    ASSERT_CELL_ARG_TYPE(v, i, VAL_SYM);
-  }
-  ASSERT_ARG_COUNT(v, syms->count, v->count - 1);
-
-  for (int i = 0; i < syms->count; i++) {
-    env_put(e, syms->cell[i], v->cell[i + 1]);
-  }
-
-  val_del(v);
-  return val_sexpr();
-}
-
 Val *val_eval_sexpr(Env *e, Val *v) {
   if (v->count == 0) { return v; }
 
@@ -422,13 +494,13 @@ Val *val_eval_sexpr(Env *e, Val *v) {
   }
 
   Val *f = val_pop(v, 0);
-  if (f->type != VAL_FUN) {
+  if (f->type != VAL_FUNC) {
     val_del(f);
     val_del(v);
-    return val_err_arg_type(0, VAL_FUN, f->type);
+    return val_err_arg_type(0, VAL_FUNC, f->type);
   }
 
-  Val *r = f->fun(e, v);
+  Val *r = val_call(e, f, v);
   val_del(f);
 
   return r;
@@ -442,6 +514,57 @@ Val *val_eval(Env *e, Val *v) {
   }
   if (v->type == VAL_SEXPR) { return val_eval_sexpr(e, v); }
   return v;
+}
+
+Val *val_call(Env *e, Val *f, Val *v) {
+  if (f->func) { return f->func(e, v); }
+
+  int given = v->count;
+  int total = f->args->count;
+
+  while (v->count) {
+    ASSERT(
+      v,
+      f->args->count != 0,
+      val_err(ERR_ARG, "expected %i arguments, got %i", total, given)
+    );
+
+    Val *sym = val_pop(f->args, 0);
+    if (strcmp(sym->sym, "&") == 0) {
+      ASSERT_ARG_COUNT(v, 1, f->args->count);
+      Val *nsym = val_pop(f->args, 0);
+      env_put(f->env, nsym, builtin_list(e, v));
+      val_del(sym);
+      val_del(nsym);
+      break;
+    }
+
+    Val *val = val_pop(v, 0);
+    env_put(f->env, sym, val);
+    val_del(sym);
+    val_del(val);
+  }
+
+  val_del(v);
+
+  if (f->args->count > 0 && strcmp(f->args->cell[0]->sym, "&") == 0) {
+    ASSERT_ARG_COUNT(v, 2, f->args->count);
+    val_del(val_pop(f->args, 0));
+    Val *sym = val_pop(f->args, 0);
+    Val *val = val_qexpr();
+    env_put(f->env, sym, val);
+    val_del(sym);
+    val_del(val);
+  }
+
+  if (f->args->count == 0) {
+    f->env->parent = e;
+    return builtin_eval(
+      f->env,
+      val_append(val_sexpr(), val_copy(f->body))
+    );
+  }
+  return val_copy(f);
 }
 
 /*
@@ -505,8 +628,16 @@ void val_print(Val *v) {
     case VAL_SYM:
       printf("%s", v->sym);
       break;
-    case VAL_FUN:
-      printf("<function>");
+    case VAL_FUNC:
+      if (v->func) {
+        printf("<builtin>");
+      } else {
+        printf("(\\ ");
+        val_print(v->args);
+        putchar(' ');
+        val_print(v->body);
+        putchar(')');
+      }
       break;
     case VAL_SEXPR:
       val_expr_print(v, '(', ')');
@@ -531,10 +662,25 @@ void val_println(Val *v) {
 
 Env *env_new(void) {
   Env *e = malloc(sizeof(Env));
+  e->parent = NULL;
   e->count = 0;
   e->syms = NULL;
   e->vals = NULL;
   return e;
+}
+
+Env *env_copy(Env *e) {
+  Env *c = malloc(sizeof(Env));
+  c->parent = e->parent;
+  c->count = e->count;
+  c->syms = malloc(sizeof(char*) * c->count);
+  c->vals = malloc(sizeof(Val*) * c->count);
+  for (int i = 0; i < c->count; i++) {
+    c->syms[i] = malloc(strlen(e->syms[i] + 1));
+    strcpy(c->syms[i], e->syms[i]);
+    c->vals[i] = val_copy(e->vals[i]);
+  }
+  return c;
 }
 
 void env_del(Env *e) {
@@ -553,7 +699,15 @@ Val *env_get(Env *e, Val *k) {
       return val_copy(e->vals[i]);
     }
   }
+  if (e->parent) {
+    return env_get(e->parent, k);
+  }
   return val_err(ERR_ARG, "unbound symbol: %s", k->sym);
+}
+
+void env_def(Env *e, Val *k, Val *v) {
+  while (e->parent) { e = e->parent; }
+  env_put(e, k, v);
 }
 
 void env_put(Env *e, Val *k, Val *v) {
@@ -576,7 +730,7 @@ void env_put(Env *e, Val *k, Val *v) {
 
 void env_add_builtin(Env *e, char *name, BuiltIn func) {
   Val *k = val_sym(name);
-  Val *v = val_fun(func);
+  Val *v = val_func(func);
   env_put(e, k, v);
   val_del(k);
   val_del(v);
@@ -598,6 +752,8 @@ void env_add_builtins(Env *e) {
   env_add_builtin(e, "join", builtin_join);
 
   env_add_builtin(e, "def", builtin_def);
+  env_add_builtin(e, "\\", builtin_lambda);
+  env_add_builtin(e, ":=", builtin_assign);
 }
 
 Env *env_init(void) {
