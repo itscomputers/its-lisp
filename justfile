@@ -3,3 +3,6 @@ compile:
 
 run:
   ./repl
+
+debug:
+  lldb ./repl
