@@ -495,9 +495,10 @@ Val *val_eval_sexpr(Env *e, Val *v) {
 
   Val *f = val_pop(v, 0);
   if (f->type != VAL_FUNC) {
+    int type = f->type;
     val_del(f);
     val_del(v);
-    return val_err_arg_type(0, VAL_FUNC, f->type);
+    return val_err_arg_type(0, VAL_FUNC, type);
   }
 
   Val *r = val_call(e, f, v);
