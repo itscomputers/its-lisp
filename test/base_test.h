@@ -11,7 +11,7 @@
 
 #define assert_eq_str(a, b, field) do { \
   if (strcmp(a, b) != 0) { \
-    printf("\n  ***%s: expected %s to equal %s***", field, a, b); \
+    printf("\n  ***%s: expected `%s` to equal `%s`***", field, a, b); \
     return 1; \
   } \
 } while (0)

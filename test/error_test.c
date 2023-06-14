@@ -99,7 +99,7 @@ int test_too_many_args(char *sym) {
 
   assert_type(result->type, VAL_ERR);
   assert_err_type(result->err->type, ERR_ARG);
-  assert_detail(result->err->det, "expected 1 arguments, got 0");
+  assert_detail(result->err->det, "expected 1 arguments, got 2");
 
   val_del(result);
   env_del(env);
@@ -159,7 +159,7 @@ int test_empty_qexpr(char *sym) {
 
   assert_type(result->type, VAL_ERR);
   assert_type(result->err->type, ERR_ARG);
-  assert_detail(result->err->det, "expected arguments at index 0, got 0");
+  assert_detail(result->err->det, "expected some arguments at index 0, got 0");
 
   val_del(result);
   env_del(env);

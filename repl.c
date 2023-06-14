@@ -6,33 +6,35 @@
 
 #include <editline/readline.h>
 #include "mpc.h"
+#include "error.h"
 
 #define ASSERT(val, cond, err) \
   if (!(cond)) { \
     val_del(val); \
-    return err; \
+    return val_err(err); \
   }
-#define ASSERT_CELL_ARG_TYPE(val, index, expected) \
+#define ASSERT_ARG_COUNT(val_to_del, val, expected) \
+  if (val->count != expected) { \
+    int given = val->count; \
+    val_del(val_to_del); \
+    Err *err = err_arg_count(expected, given); \
+    return val_err(err); \
+  }
+#define ASSERT_ARG_TYPE(val_to_del, val, expected) \
+  if (val->type != expected) { \
+    char *given = type_name(val->type); \
+    char *expected_name = type_name(expected); \
+    val_del(val_to_del); \
+    Err *err = err_arg_type(expected_name, given); \
+    return val_err(err); \
+  }
+#define ASSERT_CELL_ARG_TYPE(val_to_del, val, index, expected) \
   if (val->cell[index]->type != expected) { \
-    int type = val->cell[index]->type; \
-    val_del(val); \
-    return val_err_arg_type(index, expected, type); \
-  }
-#define ASSERT_SUBCELL_ARG_TYPE(val, parent_index, child_index, expected) \
-  if (val->cell[parent_index]->cell[child_index]->type != expected) { \
-    int type = val->cell[parent_index]->cell[child_index]->type; \
-    val_del(val); \
-    return val_err_arg_type(child_index, expected, type); \
-  }
-#define ASSERT_ARG_COUNT(val, expected, given) \
-  if (expected != given) { \
-    val_del(val); \
-    return val_err(ERR_ARG, "expected %i arguments, got %i", expected, given); \
-  }
-#define ASSERT_NONEMPTY_CELL_ARG(val, index) \
-  if (val->cell[index]->count == 0) { \
-    val_del(val); \
-    return val_err(ERR_ARG, "expected arguments at index %i, got 0", index); \
+    char *given = type_name(val->cell[index]->type); \
+    char *expected_name = type_name(expected); \
+    val_del(val_to_del); \
+    Err *err = err_cell_arg_type(index, expected_name, given); \
+    return val_err(err); \
   }
 
 struct Val;
@@ -40,9 +42,6 @@ typedef struct Val Val;
 
 struct Env;
 typedef struct Env Env;
-
-struct Err;
-typedef struct Err Err;
 
 typedef Val*(*BuiltIn)(Env*, Val*);
 
@@ -69,12 +68,6 @@ struct Env {
   Val **vals;
 };
 
-struct Err {
-  int type;
-  char *name;
-  char *det;
-};
-
 enum {
   VAL_NUM,
   VAL_ERR,
@@ -94,35 +87,6 @@ char *type_name(int t) {
     case VAL_QEXPR: return "q-expression";
   }
   return "unknown-type";
-}
-
-enum {
-  ERR_ARG,
-  ERR_TYPE,
-  ERR_ARITHMETIC,
-  ERR_VALUE,
-  ERR_STANDARD,
-};
-
-char *err_name(int e) {
-  switch (e) {
-    case ERR_ARG: return "ArgumentError";
-    case ERR_TYPE: return "TypeError";
-    case ERR_ARITHMETIC: return "ArithmeticError";
-    case ERR_VALUE: return "ValueError";
-    case ERR_STANDARD: return "StandardError";
-  }
-  return "Error";
-}
-
-Err *err_copy(Err *e) {
-  Err *c = malloc(sizeof(Err));
-  c->type = e->type;
-  c->name = malloc(strlen(e->name) + 1);
-  strcpy(c->name, e->name);
-  c->det = malloc(strlen(e->det) + 1);
-  strcpy(c->det, e->det);
-  return c;
 }
 
 Val *val_read(mpc_ast_t *t);
@@ -149,31 +113,13 @@ Val *val_num(long n) {
   return v;
 }
 
-Val *val_err(int e, char *fmt, ...) {
+Val *val_err(Err* err) {
   Val *v = malloc(sizeof(Val));
   v->type = VAL_ERR;
   v->err = malloc(sizeof(Err));
-  v->err->type = e;
-  v->err->name = err_name(e);
-
-  va_list va;
-  va_start(va, fmt);
-  v->err->det = malloc(512);
-  vsnprintf(v->err->det, 511, fmt, va);
-  v->err->det = realloc(v->err->det, strlen(v->err->det) + 1);
-  va_end(va);
-
+  v->err = err_copy(err);
+  err_del(err);
   return v;
-}
-
-Val *val_err_arg_type(int index, int expected, int given) {
-  return val_err(
-    ERR_TYPE,
-    "expected %s at index %i, got %s",
-    type_name(expected),
-    index,
-    type_name(given)
-  );
 }
 
 Val *val_sym(char *s) {
@@ -315,9 +261,9 @@ Val *val_join(Val *a, Val *b) {
  */
 
 Val *builtin_head(Env *e, Val *args) {
-  ASSERT_ARG_COUNT(args, 1, args->count);
-  ASSERT_CELL_ARG_TYPE(args, 0, VAL_QEXPR);
-  ASSERT_NONEMPTY_CELL_ARG(args, 0);
+  ASSERT_ARG_COUNT(args, args, 1);
+  ASSERT_CELL_ARG_TYPE(args, args, 0, VAL_QEXPR);
+  ASSERT(args, args->cell[0]->count > 0, err_empty_cell_args(0));
   Val *v = val_take(args, 0);
   while (v->count > 1) {
     val_del(val_pop(v, 1));
@@ -326,9 +272,9 @@ Val *builtin_head(Env *e, Val *args) {
 }
 
 Val *builtin_tail(Env *e, Val *args) {
-  ASSERT_ARG_COUNT(args, 1, args->count);
-  ASSERT_CELL_ARG_TYPE(args, 0, VAL_QEXPR);
-  ASSERT_NONEMPTY_CELL_ARG(args, 0);
+  ASSERT_ARG_COUNT(args, args, 1);
+  ASSERT_CELL_ARG_TYPE(args, args, 0, VAL_QEXPR);
+  ASSERT(args, args->cell[0]->count > 0, err_empty_cell_args(0));
   Val *v = val_take(args, 0);
   val_del(val_pop(v, 0));
   return v;
@@ -340,8 +286,8 @@ Val *builtin_list(Env *e, Val *args) {
 }
 
 Val *builtin_eval(Env *e, Val *args) {
-  ASSERT_ARG_COUNT(args, 1, args->count);
-  ASSERT_CELL_ARG_TYPE(args, 0, VAL_QEXPR);
+  ASSERT_ARG_COUNT(args, args, 1);
+  ASSERT_CELL_ARG_TYPE(args, args, 0, VAL_QEXPR);
   Val *v = val_take(args, 0);
   v->type = VAL_SEXPR;
   return val_eval(e, v);
@@ -349,7 +295,7 @@ Val *builtin_eval(Env *e, Val *args) {
 
 Val *builtin_join(Env *e, Val *args) {
   for (int i = 0; i < args->count; i++) {
-    ASSERT_CELL_ARG_TYPE(args, i, VAL_QEXPR);
+    ASSERT_CELL_ARG_TYPE(args, args, i, VAL_QEXPR);
   }
   Val *v = val_pop(args, 0);
   while (args->count) {
@@ -360,16 +306,12 @@ Val *builtin_join(Env *e, Val *args) {
 }
 
 Val *builtin_var(Env *e, Val *v, char *func) {
-  ASSERT_CELL_ARG_TYPE(v, 0, VAL_QEXPR);
+  ASSERT_CELL_ARG_TYPE(v, v, 0, VAL_QEXPR);
   Val *syms = v->cell[0];
   for (int i = 0; i < syms->count; i++) {
-    ASSERT(
-      v,
-      syms->cell[i]->type == VAL_SYM,
-      val_err_arg_type(i, VAL_SYM, syms->cell[i]->type)
-    );
+    ASSERT_CELL_ARG_TYPE(v, syms, i, VAL_SYM);
   }
-  ASSERT_ARG_COUNT(v, syms->count, v->count - 1);
+  ASSERT_ARG_COUNT(v, v, syms->count + 1);
 
   for (int i = 0; i < syms->count; i++) {
     if (strcmp(func, "def")) {
@@ -392,11 +334,11 @@ Val *builtin_assign(Env *e, Val *v) {
 }
 
 Val *builtin_lambda(Env *e, Val *v) {
-  ASSERT_ARG_COUNT(v, 2, v->count);
-  ASSERT_CELL_ARG_TYPE(v, 0, VAL_QEXPR);
-  ASSERT_CELL_ARG_TYPE(v, 1, VAL_QEXPR);
+  ASSERT_ARG_COUNT(v, v, 2);
+  ASSERT_CELL_ARG_TYPE(v, v, 0, VAL_QEXPR);
+  ASSERT_CELL_ARG_TYPE(v, v, 1, VAL_QEXPR);
   for (int i = 0; i < v->cell[0]->count; i++) {
-    ASSERT_SUBCELL_ARG_TYPE(v, 0, i, VAL_SYM);
+    ASSERT_CELL_ARG_TYPE(v, v->cell[0], i, VAL_SYM);
   }
 
   Val *args = val_pop(v, 0);
@@ -438,7 +380,7 @@ Val *builtin_max(Env *e, Val *v) {
 
 Val *builtin_op(Env *e, Val *v, char *op) {
   for (int i=0; i < v->count; i++) {
-    ASSERT_CELL_ARG_TYPE(v, i, VAL_NUM);
+    ASSERT_CELL_ARG_TYPE(v, v, i, VAL_NUM);
   }
 
   Val *a = val_pop(v, 0);
@@ -453,7 +395,7 @@ Val *builtin_op(Env *e, Val *v, char *op) {
     if (strstr("/%", op) && b->num == 0) {
       val_del(a);
       val_del(b);
-      a = val_err(ERR_ARITHMETIC, "division by zero");
+      a = val_err(err_new(ERR_ARITHMETIC, "division by zero"));
       break;
     }
 
@@ -491,10 +433,11 @@ Val *val_eval_sexpr(Env *e, Val *v) {
 
   Val *f = val_pop(v, 0);
   if (f->type != VAL_FUNC) {
-    int type = f->type;
+    char *given = type_name(f->type);
+    char *expected = type_name(VAL_FUNC);
     val_del(f);
     val_del(v);
-    return val_err_arg_type(0, VAL_FUNC, type);
+    return val_err(err_cell_arg_type(0, expected, given));
   }
 
   Val *r = val_call(e, f, v);
@@ -523,12 +466,12 @@ Val *val_call(Env *e, Val *f, Val *v) {
     ASSERT(
       v,
       f->args->count != 0,
-      val_err(ERR_ARG, "expected %i arguments, got %i", total, given)
+      err_arg_count(total, given)
     );
 
     Val *sym = val_pop(f->args, 0);
     if (strcmp(sym->sym, "&") == 0) {
-      ASSERT_ARG_COUNT(v, 1, f->args->count);
+      ASSERT_ARG_COUNT(v, f->args, 1);
       Val *nsym = val_pop(f->args, 0);
       env_put(f->env, nsym, builtin_list(e, v));
       val_del(sym);
@@ -545,7 +488,7 @@ Val *val_call(Env *e, Val *f, Val *v) {
   val_del(v);
 
   if (f->args->count > 0 && strcmp(f->args->cell[0]->sym, "&") == 0) {
-    ASSERT_ARG_COUNT(v, 2, f->args->count);
+    ASSERT_ARG_COUNT(v, f->args, 2);
     val_del(val_pop(f->args, 0));
     Val *sym = val_pop(f->args, 0);
     Val *val = val_qexpr();
@@ -572,7 +515,7 @@ Val *val_read_num(mpc_ast_t *t) {
   errno = 0;
   long n = strtol(t->contents, NULL, 10);
   return errno == ERANGE ?
-    val_err(ERR_VALUE, "unable to parse %s as number", t->contents) :
+    val_err(err_parse_number(t->contents)) :
     val_num(n);
 }
 
@@ -699,7 +642,7 @@ Val *env_get(Env *e, Val *k) {
   if (e->parent) {
     return env_get(e->parent, k);
   }
-  return val_err(ERR_ARG, "unbound symbol: %s", k->sym);
+  return val_err(err_unbound_symbol(k->sym));
 }
 
 void env_def(Env *e, Val *k, Val *v) {

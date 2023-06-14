@@ -1,6 +1,7 @@
 compile:
   gcc -o repl -Wall -ledit \
     repl.c \
+    error.c \
     mpc.c
 
 run:
@@ -9,6 +10,7 @@ run:
 debug:
   gcc -o repl -Wall -ledit -g \
     repl.c \
+    error.c \
     mpc.c
   lldb ./repl
   rm -rf repl.dSYM
@@ -23,6 +25,7 @@ _test_setup:
   awk '{gsub(/int main/, "int main__"); print}' repl.c > repl__.c
   gcc -o test.out -Wall -ledit -g \
     repl__.c \
+    error.c \
     mpc.c \
     test/repl_test.c \
     test/error_test.c \
