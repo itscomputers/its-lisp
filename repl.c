@@ -32,11 +32,7 @@
 #define ASSERT_NONEMPTY_CELL_ARG(val, index) \
   if (val->cell[index]->count == 0) { \
     val_del(val); \
-    return val_err( \
-      ERR_ARG, \
-      "expected arguments at index %i, got 0", \
-      index \
-    ); \
+    return val_err(ERR_ARG, "expected arguments at index %i, got 0", index); \
   }
 
 struct Val;
