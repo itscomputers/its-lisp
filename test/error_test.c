@@ -48,7 +48,7 @@ int test_builtin_op_wrong_type(Env *env, Val *val, char *det) {
 int test_builtin_op_with_sym_error(void) {
   begin_test();
   Env *env = env_init();
-  Val *val = val_sym("x");
+  Val *val = s("x");
   env_put(env, val, val);
   char *det = "expected number at index 1, got symbol";
   int result = test_builtin_op_wrong_type(env, val, det);
@@ -59,7 +59,7 @@ int test_builtin_op_with_sym_error(void) {
 int test_builtin_op_with_func_error(void) {
   begin_test();
   Env *env = env_init();
-  Val *val = val_sym("min");
+  Val *val = s("min");
   char *det = "expected number at index 1, got function";
   int result = test_builtin_op_wrong_type(env, val, det);
   env_del(env);
@@ -240,6 +240,324 @@ int test_join_wrong_type_2(void) {
   return 0;
 }
 
+int test_def_arg0_wrong_type(Env *env, Val *val, char *detail) {
+  Val *expr = build_sexpr(2, s("def"), val);
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_TYPE);
+  assert_detail(result->err->det, detail);
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_def_arg0_number(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_def_arg0_wrong_type(
+    env,
+    n(2),
+    "expected q-expression at index 0, got number"
+  );
+}
+
+int test_def_arg0_symbol(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *val = s("x");
+  env_put(env, val, val);
+  return test_def_arg0_wrong_type(
+    env,
+    val,
+    "expected q-expression at index 0, got symbol"
+  );
+}
+
+int test_def_arg0_function(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_def_arg0_wrong_type(
+    env,
+    s("+"),
+    "expected q-expression at index 0, got function"
+  );
+}
+
+int test_def_arg0_sexpr(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_def_arg0_wrong_type(
+    env,
+    val_sexpr(),
+    "expected q-expression at index 0, got s-expression"
+  );
+}
+
+int test_def_arg1_wrong_type(Val *val, char *detail) {
+  Env *env = env_init();
+  Val *expr = build_sexpr(2, s("def"), build_qexpr(3, s("x"), s("y"), val));
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_TYPE);
+  assert_detail(result->err->det, detail);
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_def_arg1_number(void) {
+  begin_test();
+  return test_def_arg1_wrong_type(
+    n(2),
+    "expected symbol at index 2, got number"
+  );
+}
+
+int test_def_arg1_sexpr(void) {
+  begin_test();
+  return test_def_arg1_wrong_type(
+    build_sexpr(3, s("+"), n(2), n(3)),
+    "expected symbol at index 2, got s-expression"
+  );
+}
+
+int test_def_arg1_qexpr(void) {
+  begin_test();
+  return test_def_arg1_wrong_type(
+    build_qexpr(3, s("y"), n(2), n(3)),
+    "expected symbol at index 2, got q-expression"
+  );
+}
+
+int test_def_wrong_arg_count(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *expr = build_sexpr(3,
+    s("def"),
+    build_qexpr(2, s("x"), s("y")),
+    n(2)
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_ARG);
+  assert_detail(result->err->det, "expected 1 arguments, got 2");
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_wrong_arg_count_1(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *expr = build_sexpr(2,
+    s("\\"),
+    build_qexpr(2, s("x"), s("y"))
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_ARG);
+  assert_detail(result->err->det, "expected 2 arguments, got 1");
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_wrong_arg_count_3(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *expr = build_sexpr(4,
+    s("\\"),
+    build_qexpr(2, s("x"), s("y")),
+    build_qexpr(3, s("+"), s("x"), s("y")),
+    build_qexpr(1, s("x"))
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_ARG);
+  assert_detail(result->err->det, "expected 2 arguments, got 3");
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_wrong_arg0_type(Env *env, Val *val, char *detail) {
+  Val *expr = build_sexpr(3,
+    s("\\"),
+    val,
+    build_qexpr(3, s("+"), s("x"), s("y"))
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_TYPE);
+  assert_detail(result->err->det, detail);
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_arg0_number(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg0_type(
+    env,
+    n(2),
+    "expected q-expression at index 0, got number"
+  );
+}
+
+int test_lambda_arg0_symbol(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *sym = s("x");
+  env_put(env, sym, sym);
+  return test_lambda_wrong_arg0_type(
+    env,
+    sym,
+    "expected q-expression at index 0, got symbol"
+  );
+}
+
+int test_lambda_arg0_function(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg0_type(
+    env,
+    s("+"),
+    "expected q-expression at index 0, got function"
+  );
+}
+
+int test_lambda_arg0_sexpr(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg0_type(
+    env,
+    val_sexpr(),
+    "expected q-expression at index 0, got s-expression"
+  );
+}
+
+int test_lambda_wrong_arg1_type(Env *env, Val *val, char *detail) {
+  Val *expr = build_sexpr(3,
+    s("\\"),
+    build_qexpr(2, s("x"), s("y")),
+    val
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_TYPE);
+  assert_detail(result->err->det, detail);
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_arg1_number(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg1_type(
+    env,
+    n(2),
+    "expected q-expression at index 1, got number"
+  );
+}
+
+int test_lambda_arg1_symbol(void) {
+  begin_test();
+  Env *env = env_init();
+  Val *sym = s("x");
+  env_put(env, sym, sym);
+  return test_lambda_wrong_arg1_type(
+    env,
+    sym,
+    "expected q-expression at index 1, got symbol"
+  );
+}
+
+int test_lambda_arg1_function(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg1_type(
+    env,
+    s("+"),
+    "expected q-expression at index 1, got function"
+  );
+}
+
+int test_lambda_arg1_sexpr(void) {
+  begin_test();
+  Env *env = env_init();
+  return test_lambda_wrong_arg1_type(
+    env,
+    val_sexpr(),
+    "expected q-expression at index 1, got s-expression"
+  );
+}
+
+int test_lambda_wrong_arg0_inner_type(Val *val, char *detail) {
+  Env *env = env_init();
+  Val *expr = build_sexpr(3,
+    s("\\"),
+    build_qexpr(2, s("x"), val),
+    build_qexpr(3, s("+"), s("x"), s("y"))
+  );
+  Val *result = val_eval(env, expr);
+
+  assert_type(result->type, VAL_ERR);
+  assert_err_type(result->err->type, ERR_TYPE);
+  assert_detail(result->err->det, detail);
+
+  val_del(result);
+  env_del(env);
+
+  return 0;
+}
+
+int test_lambda_arg0_inner_number(void) {
+  begin_test();
+  return test_lambda_wrong_arg0_inner_type(
+    n(2),
+    "expected symbol at index 1, got number"
+  );
+}
+
+int test_lambda_arg0_inner_sexpr(void) {
+  begin_test();
+  return test_lambda_wrong_arg0_inner_type(
+    val_sexpr(),
+    "expected symbol at index 1, got s-expression"
+  );
+}
+
+int test_lambda_arg0_inner_qexpr(void) {
+  begin_test();
+  return test_lambda_wrong_arg0_inner_type(
+    val_qexpr(),
+    "expected symbol at index 1, got q-expression"
+  );
+}
+
 int error_tests(void) {
   run_test(test_div_by_zero);
   run_test(test_mod_by_zero);
@@ -264,6 +582,30 @@ int error_tests(void) {
   run_test(test_join_wrong_type_0);
   run_test(test_join_wrong_type_1);
   run_test(test_join_wrong_type_2);
+
+  run_test(test_def_arg0_number);
+  run_test(test_def_arg0_symbol);
+  run_test(test_def_arg0_function);
+  run_test(test_def_arg0_sexpr);
+  run_test(test_def_arg1_number);
+  run_test(test_def_arg1_sexpr);
+  run_test(test_def_arg1_qexpr);
+  run_test(test_def_wrong_arg_count);
+  run_test(test_def_wrong_arg_count);
+
+  run_test(test_lambda_wrong_arg_count_1);
+  run_test(test_lambda_wrong_arg_count_3);
+  run_test(test_lambda_arg0_number);
+  run_test(test_lambda_arg0_symbol);
+  run_test(test_lambda_arg0_function);
+  run_test(test_lambda_arg0_sexpr);
+  run_test(test_lambda_arg1_number);
+  run_test(test_lambda_arg1_symbol);
+  run_test(test_lambda_arg1_function);
+  run_test(test_lambda_arg1_sexpr);
+  run_test(test_lambda_arg0_inner_number);
+  run_test(test_lambda_arg0_inner_sexpr);
+  run_test(test_lambda_arg0_inner_qexpr);
 
   return 0;
 }

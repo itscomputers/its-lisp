@@ -229,5 +229,5 @@ int main(int argc, char **argv) {
     printf("\nall tests passed!!\n");
   }
   printf("\ntests run: %i\n", tests_run + error_tests_run);
-  return 0;
+  return !result;
 }

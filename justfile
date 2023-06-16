@@ -1,13 +1,13 @@
-compile:
+@compile:
   gcc -o repl -Wall -ledit \
     repl.c \
     error.c \
     mpc.c
 
-run:
+@run:
   ./repl
 
-debug:
+@debug:
   gcc -o repl -Wall -ledit -g \
     repl.c \
     error.c \
@@ -15,13 +15,13 @@ debug:
   lldb ./repl
   rm -rf repl.dSYM
 
-test: _test_setup && _test_cleanup
+@test: _test_setup && _test_cleanup
   ./test.out
 
-test_debug: _test_setup && _test_cleanup
+@test_debug: _test_setup && _test_cleanup
   lldb ./test.out
 
-_test_setup:
+@_test_setup:
   awk '{gsub(/int main/, "int main__"); print}' repl.c > repl__.c
   gcc -o test.out -Wall -ledit -g \
     repl__.c \
@@ -31,7 +31,7 @@ _test_setup:
     test/error_test.c \
     test/base_test.c
 
-_test_cleanup:
+@_test_cleanup:
   rm ./test.out
   rm -rf test.out.dSYM
   rm repl__.c
