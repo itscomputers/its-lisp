@@ -37,3 +37,6 @@
 Val *build_sexpr(int arg_count, ...);
 Val *build_qexpr(int arg_count, ...);
 
+int error_tests(void);
+int error_tests_run;
+

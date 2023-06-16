@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include <editline/readline.h>
@@ -72,7 +73,7 @@ void val_print(Val *v);
 void val_println(Val *v);
 Val *val_num(long n);
 Val *val_sym(char *s);
-Val *val_err(int e, char *fmt, ...);
+Val *val_err(Err *err);
 Val *val_sexpr(void);
 Val *val_qexpr(void);
 Val *val_append(Val *v, Val *c);
@@ -84,3 +85,16 @@ void env_del(Env *e);
 Val *env_get(Env *e, Val *k);
 void env_def(Env *e, Val *k, Val *v);
 void env_put(Env *e, Val *k, Val *v);
+
+char *err_name(int e);
+Err *err_new(int type, char *fmt, ...);
+Err *err_copy(Err *e);
+void err_del(Err *e);
+Err *err_parse_number(char *given);
+Err *err_unbound_symbol(char *given);
+Err *err_arg_type(char *expected, char *given);
+Err *err_cell_arg_type(int index, char *expected, char *given);
+Err *err_empty_args(void);
+Err *err_arg_count(int expected, int given);
+Err *err_empty_cell_args(int index);
+Err *err_cell_arg_count(int index, int expected, int given);

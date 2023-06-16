@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #include "../repl.h"
 #include "base_test.h"
 

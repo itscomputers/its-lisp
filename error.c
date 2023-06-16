@@ -1,23 +1,6 @@
 /* error.c */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-
-typedef struct Err {
-  int type;
-  char *name;
-  char *det;
-} Err;
-
-enum {
-  ERR_ARG,
-  ERR_TYPE,
-  ERR_ARITHMETIC,
-  ERR_VALUE,
-  ERR_STANDARD,
-};
+#include "repl.h"
 
 char *err_name(int e) {
   switch (e) {

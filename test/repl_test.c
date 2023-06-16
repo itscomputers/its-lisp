@@ -1,8 +1,5 @@
-#include <stdio.h>
-
 #include "../repl.h"
 #include "base_test.h"
-#include "error_test.h"
 
 #define increment_tests_run { tests_run++; }
 
