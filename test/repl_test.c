@@ -4,12 +4,12 @@
 #include "base_test.h"
 #include "error_test.h"
 
-#define begin_test() { printf("%s", __func__); tests_run++; }
+#define increment_tests_run { tests_run++; }
 
 int tests_run = 0;
 
 int test_arithmetic(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
 
   Val *seventy_seven = build_sexpr(3, s("*"), n(11), n(7));
@@ -26,11 +26,11 @@ int test_arithmetic(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_min(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
   Val *expr = build_sexpr(5, s("min"), n(3), n(2), n(7), n(5));
   Val *result = val_eval(env, expr);
@@ -41,11 +41,11 @@ int test_min(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_max(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
   Val *expr = build_sexpr(5, s("max"), n(3), n(2), n(7), n(5));
   Val *result = val_eval(env, expr);
@@ -56,11 +56,11 @@ int test_max(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_head(void) {
-  begin_test();
+  begin_test;
 
   Val *head = build_sexpr(2, s("head"), build_qexpr(4, n(2), n(3), n(5), s("x")));
   Val *expr = build_sexpr(2, s("eval"), head);
@@ -74,11 +74,11 @@ int test_head(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_tail(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
   Val *expr = build_sexpr(2, s("tail"), build_qexpr(4, n(2), n(3), n(5), s("x")));
   Val *result = val_eval(env, expr);
@@ -98,11 +98,11 @@ int test_tail(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_list(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
 
   Val *expr = build_sexpr(4, s("list"), n(2), n(3), n(5));
@@ -123,11 +123,11 @@ int test_list(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_join(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
 
   Val *expr = build_sexpr(3,
@@ -155,11 +155,11 @@ int test_join(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_def(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
 
   Val *x = val_qexpr();
@@ -182,11 +182,11 @@ int test_def(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int test_lambda(void) {
-  begin_test();
+  begin_test;
   Env *env = env_init();
 
   Val *lambda = build_sexpr(3,
@@ -204,7 +204,7 @@ int test_lambda(void) {
   val_del(result);
   env_del(env);
 
-  return 0;
+  return 1;
 }
 
 int all_tests(void) {
@@ -220,12 +220,12 @@ int all_tests(void) {
 
   error_tests();
 
-  return 0;
+  return 1;
 }
 
 int main(int argc, char **argv) {
   int result = all_tests();
-  if (result == 0) {
+  if (result == 1) {
     printf("\nall tests passed!!\n");
   }
   printf("\ntests run: %i\n", tests_run + error_tests_run);
